@@ -29,8 +29,6 @@ import (
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/pkg/v3/osutil"
 	"go.etcd.io/etcd/server/v3/embed"
-	"go.etcd.io/etcd/server/v3/etcdserver/api/v2discovery"
-	"go.etcd.io/etcd/server/v3/etcdserver/errors"
 )
 
 type dirType string
@@ -130,42 +128,6 @@ func startEtcdOrProxyV2(args []string) {
 	}
 
 	if err != nil {
-		if derr, ok := err.(*errors.DiscoveryError); ok {
-			switch derr.Err {
-			case v2discovery.ErrDuplicateID:
-				lg.Warn(
-					"member has been registered with discovery service",
-					zap.String("name", cfg.ec.Name),
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(derr.Err),
-				)
-				lg.Warn(
-					"but could not find valid cluster configuration",
-					zap.String("data-dir", cfg.ec.Dir),
-				)
-				lg.Warn("check data dir if previous bootstrap succeeded")
-				lg.Warn("or use a new discovery token if previous bootstrap failed")
-
-			case v2discovery.ErrDuplicateName:
-				lg.Warn(
-					"member with duplicated name has already been registered",
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(derr.Err),
-				)
-				lg.Warn("cURL the discovery token URL for details")
-				lg.Warn("do not reuse discovery token; generate a new one to bootstrap a cluster")
-
-			default:
-				lg.Warn(
-					"failed to bootstrap; discovery token was already used",
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(err),
-				)
-				lg.Warn("do not reuse discovery token; generate a new one to bootstrap a cluster")
-			}
-			os.Exit(1)
-		}
-
 		if strings.Contains(err.Error(), "include") && strings.Contains(err.Error(), "--initial-cluster") {
 			lg.Warn("failed to start", zap.Error(err))
 			if cfg.ec.InitialCluster == cfg.ec.InitialClusterFromName(cfg.ec.Name) {
