@@ -35,7 +35,6 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/etcdhttp"
-	"go.etcd.io/etcd/server/v3/etcdserver/api/v2discovery"
 	"go.etcd.io/etcd/server/v3/proxy/httpproxy"
 
 	"go.uber.org/zap"
@@ -133,16 +132,7 @@ func startEtcdOrProxyV2(args []string) {
 		shouldProxy := cfg.isProxy()
 		if !shouldProxy {
 			stopped, errc, err = startEtcd(&cfg.ec)
-			if derr, ok := err.(*etcdserver.DiscoveryError); ok && derr.Err == v2discovery.ErrFullCluster {
-				if cfg.shouldFallbackToProxy() {
-					lg.Warn(
-						"discovery cluster is full, falling back to proxy",
-						zap.String("fallback-proxy", fallbackFlagProxy),
-						zap.Error(err),
-					)
-					shouldProxy = true
-				}
-			} else if err != nil {
+			if err != nil {
 				lg.Warn("failed to start etcd", zap.Error(err))
 			}
 		}
@@ -152,42 +142,6 @@ func startEtcdOrProxyV2(args []string) {
 	}
 
 	if err != nil {
-		if derr, ok := err.(*etcdserver.DiscoveryError); ok {
-			switch derr.Err {
-			case v2discovery.ErrDuplicateID:
-				lg.Warn(
-					"member has been registered with discovery service",
-					zap.String("name", cfg.ec.Name),
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(derr.Err),
-				)
-				lg.Warn(
-					"but could not find valid cluster configuration",
-					zap.String("data-dir", cfg.ec.Dir),
-				)
-				lg.Warn("check data dir if previous bootstrap succeeded")
-				lg.Warn("or use a new discovery token if previous bootstrap failed")
-
-			case v2discovery.ErrDuplicateName:
-				lg.Warn(
-					"member with duplicated name has already been registered",
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(derr.Err),
-				)
-				lg.Warn("cURL the discovery token URL for details")
-				lg.Warn("do not reuse discovery token; generate a new one to bootstrap a cluster")
-
-			default:
-				lg.Warn(
-					"failed to bootstrap; discovery token was already used",
-					zap.String("discovery-token", cfg.ec.Durl),
-					zap.Error(err),
-				)
-				lg.Warn("do not reuse discovery token; generate a new one to bootstrap a cluster")
-			}
-			os.Exit(1)
-		}
-
 		if strings.Contains(err.Error(), "include") && strings.Contains(err.Error(), "--initial-cluster") {
 			lg.Warn("failed to start", zap.Error(err))
 			if cfg.ec.InitialCluster == cfg.ec.InitialClusterFromName(cfg.ec.Name) {
@@ -318,16 +272,6 @@ func startProxy(cfg *config) error {
 			return fmt.Errorf("error setting up initial cluster: %v", err)
 		}
 
-		if cfg.ec.Durl != "" {
-			var s string
-			s, err = v2discovery.GetCluster(lg, cfg.ec.Durl, cfg.ec.Dproxy)
-			if err != nil {
-				return err
-			}
-			if urlsmap, err = types.NewURLsMap(s); err != nil {
-				return err
-			}
-		}
 		peerURLs = urlsmap.URLs()
 		lg.Info("proxy using peer URLS", zap.Strings("peer-urls", peerURLs))
 
