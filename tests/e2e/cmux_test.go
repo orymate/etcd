@@ -30,7 +30,6 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/version"
-	clientv2 "go.etcd.io/etcd/client/v2"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/etcdhttp"
 )
 
@@ -116,13 +115,6 @@ func testConnectionMultiplexing(ctx context.Context, t *testing.T, member etcdPr
 			err := etcdctl.Put("a", "1")
 			assert.NoError(t, err)
 		})
-	})
-	t.Run("clientv2", func(t *testing.T) {
-		c, err := newClientV2(t, []string{httpEndpoint}, connType, false)
-		require.NoError(t, err)
-		kv := clientv2.NewKeysAPI(c)
-		_, err = kv.Set(ctx, "a", "1", nil)
-		assert.NoError(t, err)
 	})
 	t.Run("clientv3", func(t *testing.T) {
 		c := newClient(t, []string{grpcEndpoint}, connType, false)

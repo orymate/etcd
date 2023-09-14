@@ -17,6 +17,7 @@ package etcdserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"math"
@@ -55,7 +56,6 @@ import (
 	"go.etcd.io/etcd/server/v3/etcdserver/api/membership"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
-	"go.etcd.io/etcd/server/v3/etcdserver/api/v2discovery"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v2http/httptypes"
 	stats "go.etcd.io/etcd/server/v3/etcdserver/api/v2stats"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v2store"
@@ -446,22 +446,7 @@ func NewServer(cfg config.ServerConfig) (srv *EtcdServer, err error) {
 			return nil, fmt.Errorf("member %s has already been bootstrapped", m.ID)
 		}
 		if cfg.ShouldDiscover() {
-			var str string
-			str, err = v2discovery.JoinCluster(cfg.Logger, cfg.DiscoveryURL, cfg.DiscoveryProxy, m.ID, cfg.InitialPeerURLsMap.String())
-			if err != nil {
-				return nil, &DiscoveryError{Op: "join", Err: err}
-			}
-			var urlsmap types.URLsMap
-			urlsmap, err = types.NewURLsMap(str)
-			if err != nil {
-				return nil, err
-			}
-			if config.CheckDuplicateURL(urlsmap) {
-				return nil, fmt.Errorf("discovery cluster %s has duplicate url", urlsmap)
-			}
-			if cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, urlsmap); err != nil {
-				return nil, err
-			}
+			return nil, &DiscoveryError{Op: "join", Err: errors.New("v2discovery removed")}
 		}
 		cl.SetStore(st)
 		cl.SetBackend(be)

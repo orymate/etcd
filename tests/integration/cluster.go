@@ -37,8 +37,7 @@ import (
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"go.etcd.io/etcd/client/pkg/v3/types"
-	"go.etcd.io/etcd/client/v2"
-	"go.etcd.io/etcd/client/v3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/v3/grpc_testing"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/server/v3/config"
@@ -292,12 +291,12 @@ func getMembersURLs(members []*member) []string {
 }
 
 // HTTPMembers returns a list of all active members as client.Members
-func (c *cluster) HTTPMembers() []client.Member {
-	ms := []client.Member{}
+func (c *cluster) HTTPMembers() []clientv3.Member {
+	ms := []clientv3.Member{}
 	for _, m := range c.Members {
 		pScheme := schemeFromTLSInfo(m.PeerTLSInfo)
 		cScheme := schemeFromTLSInfo(m.ClientTLSInfo)
-		cm := client.Member{Name: m.Name}
+		cm := clientv3.Member{Name: m.Name}
 		for _, ln := range m.PeerListeners {
 			cm.PeerURLs = append(cm.PeerURLs, pScheme+"://"+ln.Addr().String())
 		}
@@ -382,16 +381,16 @@ func (c *cluster) addMember(t testutil.TB) types.URLs {
 
 func (c *cluster) addMemberByURL(t testutil.TB, clientURL, peerURL string) error {
 	cc := MustNewHTTPClient(t, []string{clientURL}, c.cfg.ClientTLS)
-	ma := client.NewMembersAPI(cc)
+	ma := clientv3.NewCluster(cc)
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	_, err := ma.Add(ctx, peerURL)
+	_, err := ma.MemberAdd(ctx, []string{peerURL})
 	cancel()
 	if err != nil {
 		return err
 	}
 
 	// wait for the add node entry applied in the cluster
-	members := append(c.HTTPMembers(), client.Member{PeerURLs: []string{peerURL}, ClientURLs: []string{}})
+	members := append(c.HTTPMembers(), clientv3.Member{PeerURLs: []string{peerURL}, ClientURLs: []string{}})
 	c.waitMembersMatch(t, members)
 	return nil
 }
@@ -410,9 +409,9 @@ func (c *cluster) RemoveMember(t testutil.TB, id uint64) {
 func (c *cluster) removeMember(t testutil.TB, id uint64) error {
 	// send remove request to the cluster
 	cc := MustNewHTTPClient(t, c.URLs(), c.cfg.ClientTLS)
-	ma := client.NewMembersAPI(cc)
+	ma := clientv3.NewCluster(cc)
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	err := ma.Remove(ctx, types.ID(id).String())
+	_, err := ma.MemberRemove(ctx, id)
 	cancel()
 	if err != nil {
 		return err
@@ -450,15 +449,19 @@ func (c *cluster) Terminate(t testutil.TB) {
 	wg.Wait()
 }
 
-func (c *cluster) waitMembersMatch(t testutil.TB, membs []client.Member) {
+func (c *cluster) waitMembersMatch(t testutil.TB, membs []clientv3.Member) {
 	for _, u := range c.URLs() {
 		cc := MustNewHTTPClient(t, []string{u}, c.cfg.ClientTLS)
-		ma := client.NewMembersAPI(cc)
+		ma := clientv3.NewCluster(cc)
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-			ms, err := ma.List(ctx)
+			ms, err := ma.MemberList(ctx)
 			cancel()
-			if err == nil && isMembersEqual(ms, membs) {
+			members := make([]clientv3.Member, len(ms.Members))
+			for i := range ms.Members {
+				members[i] = clientv3.Member(*ms.Members[i])
+			}
+			if err == nil && isMembersEqual(members, membs) {
 				break
 			}
 			time.Sleep(tickDuration)
@@ -478,12 +481,12 @@ func (c *cluster) waitLeader(t testutil.TB, membs []*member) int {
 		possibleLead[uint64(m.s.ID())] = true
 	}
 	cc := MustNewHTTPClient(t, getMembersURLs(membs), nil)
-	kapi := client.NewKeysAPI(cc)
+	kapi := clientv3.NewKV(cc)
 
 	// ensure leader is up via linearizable get
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*tickDuration+time.Second)
-		_, err := kapi.Get(ctx, "0", &client.GetOptions{Quorum: true})
+		_, err := kapi.Get(ctx, "0")
 		cancel()
 		if err == nil || strings.Contains(err.Error(), "Key not found") {
 			break
@@ -551,11 +554,11 @@ func (c *cluster) waitVersion() {
 
 // isMembersEqual checks whether two members equal except ID field.
 // The given wmembs should always set ID field to empty string.
-func isMembersEqual(membs []client.Member, wmembs []client.Member) bool {
+func isMembersEqual(membs []clientv3.Member, wmembs []clientv3.Member) bool {
 	sort.Sort(SortableMemberSliceByPeerURLs(membs))
 	sort.Sort(SortableMemberSliceByPeerURLs(wmembs))
 	for i := range membs {
-		membs[i].ID = ""
+		membs[i].ID = 0
 	}
 	return reflect.DeepEqual(membs, wmembs)
 }
@@ -1117,7 +1120,7 @@ func (m *member) WaitOK(t testutil.TB) {
 
 func (m *member) WaitStarted(t testutil.TB) {
 	cc := MustNewHTTPClient(t, []string{m.URL()}, m.ClientTLSInfo)
-	kapi := client.NewKeysAPI(cc)
+	kapi := clientv3.NewKV(cc)
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		_, err := kapi.Get(ctx, "/", nil)
@@ -1364,13 +1367,21 @@ func (m *member) ReadyNotify() <-chan struct{} {
 	return m.s.ReadyNotify()
 }
 
-func MustNewHTTPClient(t testutil.TB, eps []string, tls *transport.TLSInfo) client.Client {
+func MustNewHTTPClient(t testutil.TB, eps []string, tls *transport.TLSInfo) *clientv3.Client {
 	cfgtls := transport.TLSInfo{}
 	if tls != nil {
 		cfgtls = *tls
 	}
-	cfg := client.Config{Transport: mustNewTransport(t, cfgtls), Endpoints: eps}
-	c, err := client.New(cfg)
+	tlsCfg, err := cfgtls.ClientConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := clientv3.Config{
+		Endpoints:   eps,
+		DialTimeout: time.Second,
+		TLS:         tlsCfg,
+	}
+	c, err := clientv3.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1386,7 +1397,7 @@ func mustNewTransport(t testutil.TB, tlsInfo transport.TLSInfo) *http.Transport 
 	return tr
 }
 
-type SortableMemberSliceByPeerURLs []client.Member
+type SortableMemberSliceByPeerURLs []clientv3.Member
 
 func (p SortableMemberSliceByPeerURLs) Len() int { return len(p) }
 func (p SortableMemberSliceByPeerURLs) Less(i, j int) bool {

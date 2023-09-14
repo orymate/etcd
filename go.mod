@@ -5,7 +5,6 @@ go 1.19
 replace (
 	go.etcd.io/etcd/api/v3 => ./api
 	go.etcd.io/etcd/client/pkg/v3 => ./client/pkg
-	go.etcd.io/etcd/client/v2 => ./client/v2
 	go.etcd.io/etcd/client/v3 => ./client/v3
 	go.etcd.io/etcd/etcdctl/v3 => ./etcdctl
 	go.etcd.io/etcd/etcdutl/v3 => ./etcdutl
@@ -22,7 +21,6 @@ require (
 	go.etcd.io/bbolt v1.3.7
 	go.etcd.io/etcd/api/v3 v3.5.9
 	go.etcd.io/etcd/client/pkg/v3 v3.5.9
-	go.etcd.io/etcd/client/v2 v2.305.9
 	go.etcd.io/etcd/client/v3 v3.5.9
 	go.etcd.io/etcd/etcdctl/v3 v3.5.9
 	go.etcd.io/etcd/etcdutl/v3 v3.5.9
@@ -53,13 +51,10 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
-	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.11 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/prometheus/client_golang v1.11.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
